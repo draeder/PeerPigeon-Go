@@ -144,25 +144,21 @@ Key code paths:
 
 ## Deployment
 
-### Oracle Cloud (Always Free)
-
-Deploy two hub instances on Oracle Cloud for 24/7 free hosting:
+### Deploy to pigeonhub B and C
 
 ```bash
-# On first instance (bootstrap hub)
-curl -o oracle-setup.sh https://raw.githubusercontent.com/draeder/PeerPigeon-Go/main/deploy/oracle-setup.sh
-chmod +x oracle-setup.sh
-sudo PORT=3000 IS_HUB=true ./oracle-setup.sh
+# Deploy to both hubs (uses default hostnames)
+./deploy-pigeonhub.sh
 
-# On second instance (secondary hub)
-sudo PORT=3000 IS_HUB=true BOOTSTRAP_HUBS='ws://FIRST_INSTANCE_IP:3000' ./oracle-setup.sh
+# Or specify custom hostnames
+PIGEONHUB_B=your-hub-b.com PIGEONHUB_C=your-hub-c.com ./deploy-pigeonhub.sh
 ```
 
-See [deploy/README.md](deploy/README.md) for complete deployment guide including:
-- Oracle Cloud setup and security configuration
-- Docker deployment
-- Systemd service management
-- TLS/reverse proxy setup
+The script will:
+1. Clone repo and build on each hub
+2. Start Hub B as bootstrap hub
+3. Start Hub C connecting to Hub B
+4. Show connection info and test commands
 
 ### Docker
 
