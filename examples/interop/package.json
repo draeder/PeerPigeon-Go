@@ -1,0 +1,16 @@
+{
+  "name": "peerpigeon-interop-test",
+  "version": "1.0.0",
+  "description": "Interoperability test client for PeerPigeon-Go",
+  "main": "test-client.js",
+  "scripts": {
+    "test": "node test-client.js",
+    "test:dual": "node dual-hub-test.js"
+  },
+  "keywords": ["peerpigeon", "webrtc", "signaling", "test"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}

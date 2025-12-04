@@ -142,10 +142,67 @@ Key code paths:
 - Cache cross-hub peers: `internal/server/server.go:446-453`
 - Forward to local peers: `internal/server/server.go:438-444`
 
+## Deployment
+
+### Oracle Cloud (Always Free)
+
+Deploy two hub instances on Oracle Cloud for 24/7 free hosting:
+
+```bash
+# On first instance (bootstrap hub)
+curl -o oracle-setup.sh https://raw.githubusercontent.com/draeder/PeerPigeon-Go/main/deploy/oracle-setup.sh
+chmod +x oracle-setup.sh
+sudo PORT=3000 IS_HUB=true ./oracle-setup.sh
+
+# On second instance (secondary hub)
+sudo PORT=3000 IS_HUB=true BOOTSTRAP_HUBS='ws://FIRST_INSTANCE_IP:3000' ./oracle-setup.sh
+```
+
+See [deploy/README.md](deploy/README.md) for complete deployment guide including:
+- Oracle Cloud setup and security configuration
+- Docker deployment
+- Systemd service management
+- TLS/reverse proxy setup
+
+### Docker
+
+```bash
+# Build
+docker build -t peerpigeon .
+
+# Run bootstrap hub
+docker run -d --name peerpigeon-hub1 -p 3000:3000 -e IS_HUB=true peerpigeon
+
+# Run secondary hub
+docker run -d --name peerpigeon-hub2 -p 3001:3000 \
+  -e IS_HUB=true \
+  -e BOOTSTRAP_HUBS='ws://hub1-ip:3000' \
+  peerpigeon
+```
+
 ## Testing
+
+### Unit Tests
 ```bash
 go test ./...
 ```
+
+### Interoperability Tests
+
+Test your deployed servers with the Node.js interop client:
+
+```bash
+cd examples/interop
+npm install
+
+# Test single server
+SERVER_URL=ws://your-server-ip:3000 npm test
+
+# Test cross-hub discovery
+HUB1_URL=ws://hub1-ip:3000 HUB2_URL=ws://hub2-ip:3000 npm run test:dual
+```
+
+See [examples/interop/README.md](examples/interop/README.md) for detailed testing guide.
 
 ## Troubleshooting
 - Slow dependency downloads: set a Go module proxy
