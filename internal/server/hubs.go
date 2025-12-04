@@ -159,6 +159,8 @@ func (s *Server) handleBootstrapMessage(uri string, data []byte) {
             }
             s.cacheCrossHubPeer(netName, id, m)
             s.forwardToLocalPeers(netName, outboundMessage{Type: "peer-discovered", Data: m, FromPeerId: "system", NetworkName: netName, Timestamp: nowMs()})
+            // Forward back to other bootstrap hubs for bi-directional sync
+            s.announceToBootstrapExcept(id, netName, false, m, uri)
         }
     case "offer", "answer", "ice-candidate":
         if msg.TargetPeer != "" {
@@ -183,6 +185,40 @@ func (s *Server) announceToBootstrap(peerId, netName string, isHub bool, data ma
     conns := make([]*websocket.Conn, 0, len(s.bootstrapConns))
     for _, b := range s.bootstrapConns {
         if b.connected && b.ws != nil {
+            conns = append(conns, b.ws)
+        }
+    }
+    s.bootstrapMu.Unlock()
+    
+    payload := map[string]interface{}{
+        "type": "peer-discovered",
+        "data": map[string]interface{}{
+            "peerId": peerId,
+            "isHub": isHub,
+        },
+        "networkName": netName,
+        "fromPeerId": "system",
+        "timestamp": nowMs(),
+    }
+    
+    if data != nil {
+        if m, ok := payload["data"].(map[string]interface{}); ok {
+            for k, v := range data {
+                m[k] = v
+            }
+        }
+    }
+    
+    for _, ws := range conns {
+        ws.WriteJSON(payload)
+    }
+}
+
+func (s *Server) announceToBootstrapExcept(peerId, netName string, isHub bool, data map[string]interface{}, excludeUri string) {
+    s.bootstrapMu.Lock()
+    conns := make([]*websocket.Conn, 0, len(s.bootstrapConns))
+    for uri, b := range s.bootstrapConns {
+        if uri != excludeUri && b.connected && b.ws != nil {
             conns = append(conns, b.ws)
         }
     }
