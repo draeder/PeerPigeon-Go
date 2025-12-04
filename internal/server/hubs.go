@@ -202,6 +202,7 @@ func (s *Server) getHubStats() map[string]interface{} {
 }
 
 func (s *Server) announceToBootstrap(peerId, netName string, isHub bool, data map[string]interface{}) {
+    fmt.Printf("[DEBUG] announceToBootstrap: peerId=%s netName=%s isHub=%v\n", peerId, netName, isHub)
     s.bootstrapMu.Lock()
     conns := make([]*websocket.Conn, 0, len(s.bootstrapConns))
     for _, b := range s.bootstrapConns {
@@ -209,6 +210,7 @@ func (s *Server) announceToBootstrap(peerId, netName string, isHub bool, data ma
             conns = append(conns, b.ws)
         }
     }
+    fmt.Printf("[DEBUG] announceToBootstrap: found %d connected bootstrap hubs\n", len(conns))
     s.bootstrapMu.Unlock()
     
     payload := map[string]interface{}{

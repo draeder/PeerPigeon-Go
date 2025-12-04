@@ -1,0 +1,45 @@
+# Fly.io configuration for PeerPigeon Hub B (bootstrap)
+app = "pigeonhub-b"
+primary_region = "iad"
+
+[deploy]
+strategy = "immediate"
+release_command = "echo 'Deploying PeerPigeon Hub B...'"
+
+[env]
+NODE_ENV = "production"
+GIN_MODE = "release"
+HOST = "0.0.0.0"
+PORT = "8080"
+IS_HUB = "true"
+HUB_MESH_NAMESPACE = "pigeonhub-mesh"
+BOOTSTRAP_HUBS = "wss://pigeonhub-c.fly.dev"
+
+[http_service]
+internal_port = 8080
+force_https = true
+auto_stop_machines = false
+auto_start_machines = true
+min_machines_running = 1
+processes = ["app"]
+
+[[http_service.checks]]
+interval = "30s"
+timeout = "5s"
+grace_period = "10s"
+method = "GET"
+path = "/health"
+
+[[services]]
+protocol = "tcp"
+internal_port = 8080
+
+[[services.ports]]
+port = 80
+handlers = ["http"]
+
+[[services.ports]]
+port = 443
+handlers = ["tls", "http"]
+
+[build]
