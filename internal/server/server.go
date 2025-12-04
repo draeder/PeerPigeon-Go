@@ -323,7 +323,22 @@ func (s *Server) forwardSignalToBootstrap(target string, resp outboundMessage) {
     s.bootstrapMu.Unlock()
 }
 
-func (s *Server) handlePeerDiscovered(fromHub string, msg inboundMessage) {}
+func (s *Server) handlePeerDiscovered(fromHub string, msg inboundMessage) {
+    // This receives peer-discovered messages from other bootstrap hubs
+    // Forward them to local peers in the same network
+    if m, ok := msg.Data.(map[string]interface{}); ok {
+        netName := firstNonEmpty(msg.NetworkName, "global")
+        
+        // Forward to local peers
+        s.forwardToLocalPeers(netName, outboundMessage{
+            Type: "peer-discovered",
+            Data: m,
+            FromPeerId: "system",
+            NetworkName: netName,
+            Timestamp: nowMs(),
+        })
+    }
+}
 
 func (s *Server) handlePing(peerId string) {
     conn := s.getConn(peerId)
