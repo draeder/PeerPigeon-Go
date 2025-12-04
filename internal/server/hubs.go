@@ -240,7 +240,8 @@ func (s *Server) announceToBootstrap(peerId, netName string, isHub bool, data ma
     }
     
     for _, ws := range conns {
-        ws.WriteJSON(payload)
+        err := ws.WriteJSON(payload)
+        fmt.Printf("[DEBUG] announceToBootstrap: sent peer-discovered for %s, err=%v\n", peerId, err)
     }
 }
 
