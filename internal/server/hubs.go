@@ -141,6 +141,7 @@ func (s *Server) handleBootstrapMessage(uri string, data []byte) {
     if err := decodeJSON(data, &msg); err != nil {
         return
     }
+    fmt.Printf("[DEBUG] handleBootstrapMessage from %s: type=%s\n", uri, msg.Type)
     switch msg.Type {
     case "connected":
     case "peer-discovered":
@@ -154,11 +155,16 @@ func (s *Server) handleBootstrapMessage(uri string, data []byte) {
             if netName == "" {
                 netName = "global"
             }
+            fmt.Printf("[DEBUG] Received peer-discovered: peerId=%s netName=%s isHub=%v from=%s\n", id, netName, isHub, uri)
             if isHub {
                 s.emitHubDiscovered(id, uri)
                 return
             }
             s.cacheCrossHubPeer(netName, id, m)
+            
+            // Forward to local peers
+            localPeers := s.getActivePeers("", netName)
+            fmt.Printf("[DEBUG] Forwarding to %d local peers in network %s\n", len(localPeers), netName)
             s.forwardToLocalPeers(netName, outboundMessage{Type: "peer-discovered", Data: m, FromPeerId: "system", NetworkName: netName, Timestamp: nowMs()})
             
             // Forward to all OTHER bootstrap hubs (mesh mesh)
