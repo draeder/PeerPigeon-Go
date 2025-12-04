@@ -178,6 +178,40 @@ func (s *Server) getHubStats() map[string]interface{} {
     return map[string]interface{}{"totalHubs": len(hubs), "connectedHubs": len(hubs), "hubs": hubs, "bootstrapHubs": bs}
 }
 
+func (s *Server) announceToBootstrap(peerId, netName string, isHub bool, data map[string]interface{}) {
+    s.bootstrapMu.Lock()
+    conns := make([]*websocket.Conn, 0, len(s.bootstrapConns))
+    for _, b := range s.bootstrapConns {
+        if b.connected && b.ws != nil {
+            conns = append(conns, b.ws)
+        }
+    }
+    s.bootstrapMu.Unlock()
+    
+    payload := map[string]interface{}{
+        "type": "peer-discovered",
+        "data": map[string]interface{}{
+            "peerId": peerId,
+            "isHub": isHub,
+        },
+        "networkName": netName,
+        "fromPeerId": "system",
+        "timestamp": nowMs(),
+    }
+    
+    if data != nil {
+        if m, ok := payload["data"].(map[string]interface{}); ok {
+            for k, v := range data {
+                m[k] = v
+            }
+        }
+    }
+    
+    for _, ws := range conns {
+        ws.WriteJSON(payload)
+    }
+}
+
 func (s *Server) getConnectedHubs() []hubInfo {
     s.hubsMu.Lock()
     out := make([]hubInfo, 0, len(s.hubs))

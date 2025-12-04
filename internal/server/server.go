@@ -228,6 +228,7 @@ func (s *Server) handleAnnounce(peerId string, msg inboundMessage, resp outbound
     s.broadcastPeerDiscovered(peerId, netName, isHub, pi.Data)
     s.sendExistingPeersToNew(peerId, netName)
     s.sendCachedCrossHubPeersToNew(peerId, netName)
+    s.announceToBootstrap(peerId, netName, isHub, pi.Data)
 }
 
 func (s *Server) registerHub(peerId, netName string, data map[string]interface{}) {
