@@ -1,7 +1,6 @@
 package server
 
 import (
-    "fmt"
     "net/url"
     "time"
     "github.com/gorilla/websocket"
@@ -141,7 +140,6 @@ func (s *Server) handleBootstrapMessage(uri string, data []byte) {
     if err := decodeJSON(data, &msg); err != nil {
         return
     }
-    fmt.Printf("[DEBUG] handleBootstrapMessage from %s: type=%s\n", uri, msg.Type)
     switch msg.Type {
     case "connected":
     case "peer-discovered":
@@ -155,16 +153,11 @@ func (s *Server) handleBootstrapMessage(uri string, data []byte) {
             if netName == "" {
                 netName = "global"
             }
-            fmt.Printf("[DEBUG] Received peer-discovered: peerId=%s netName=%s isHub=%v from=%s\n", id, netName, isHub, uri)
             if isHub {
                 s.emitHubDiscovered(id, uri)
                 return
             }
             s.cacheCrossHubPeer(netName, id, m)
-            
-            // Forward to local peers
-            localPeers := s.getActivePeers("", netName)
-            fmt.Printf("[DEBUG] Forwarding to %d local peers in network %s\n", len(localPeers), netName)
             s.forwardToLocalPeers(netName, outboundMessage{Type: "peer-discovered", Data: m, FromPeerId: "system", NetworkName: netName, Timestamp: nowMs()})
             
             // Forward to all OTHER bootstrap hubs (mesh mesh)
@@ -209,7 +202,6 @@ func (s *Server) getHubStats() map[string]interface{} {
 }
 
 func (s *Server) announceToBootstrap(peerId, netName string, isHub bool, data map[string]interface{}) {
-    fmt.Printf("[DEBUG] announceToBootstrap: peerId=%s netName=%s isHub=%v\n", peerId, netName, isHub)
     s.bootstrapMu.Lock()
     conns := make([]*websocket.Conn, 0, len(s.bootstrapConns))
     for _, b := range s.bootstrapConns {
@@ -217,7 +209,6 @@ func (s *Server) announceToBootstrap(peerId, netName string, isHub bool, data ma
             conns = append(conns, b.ws)
         }
     }
-    fmt.Printf("[DEBUG] announceToBootstrap: found %d connected bootstrap hubs\n", len(conns))
     s.bootstrapMu.Unlock()
     
     payload := map[string]interface{}{
@@ -240,8 +231,7 @@ func (s *Server) announceToBootstrap(peerId, netName string, isHub bool, data ma
     }
     
     for _, ws := range conns {
-        err := ws.WriteJSON(payload)
-        fmt.Printf("[DEBUG] announceToBootstrap: sent peer-discovered for %s, err=%v\n", peerId, err)
+        ws.WriteJSON(payload)
     }
 }
 
