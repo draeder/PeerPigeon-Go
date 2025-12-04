@@ -5,6 +5,7 @@ import (
     "log"
     "net"
     "net/http"
+    "os"
     "sort"
     "strings"
     "sync"
@@ -72,6 +73,9 @@ func (s *Server) Start() error {
     })
     s.engine.GET("/hubstats", func(c *gin.Context) {
         writeJSON(c.Writer, 200, s.getHubStats(), s.opts.CORSOrigin)
+    })
+    s.engine.GET("/metrics", func(c *gin.Context) {
+        writeJSON(c.Writer, 200, s.getMetrics(), s.opts.CORSOrigin)
     })
     s.engine.GET("/ws", s.handleWS)
     s.engine.GET("/", s.handleWS)
@@ -551,3 +555,55 @@ func (s *Server) emitHubDiscovered(hubPeerId, fromURI string) {
         log.Printf("hub discovered: %s via %s", hubPeerId, fromURI)
     }
 }
+
+func (s *Server) getMetrics() map[string]interface{} {
+    s.peersMu.Lock()
+    peers := len(s.peerData)
+    s.peersMu.Unlock()
+
+    s.networkMu.Lock()
+    networks := len(s.networkPeers)
+    networkDetails := make(map[string]int)
+    for netName, set := range s.networkPeers {
+        networkDetails[netName] = len(set)
+    }
+    s.networkMu.Unlock()
+
+    s.hubsMu.Lock()
+    hubs := len(s.hubs)
+    s.hubsMu.Unlock()
+
+    s.bootstrapMu.Lock()
+    bootstrapConns := 0
+    for _, b := range s.bootstrapConns {
+        if b.connected {
+            bootstrapConns++
+        }
+    }
+    s.bootstrapMu.Unlock()
+
+    return map[string]interface{}{
+        "timestamp":          time.Now().Format(time.RFC3339),
+        "uptime_ms":          s.uptime(),
+        "server": map[string]interface{}{
+            "is_hub":     s.opts.IsHub,
+            "namespace":  s.opts.HubMeshNamespace,
+            "region":     os.Getenv("FLY_REGION"),
+            "app_name":   os.Getenv("FLY_APP_NAME"),
+        },
+        "connections": map[string]interface{}{
+            "active": s.connectionsSize(),
+            "max":    s.opts.MaxConnections,
+        },
+        "peers": map[string]interface{}{
+            "total":   peers,
+            "networks": networkDetails,
+        },
+        "hubs": map[string]interface{}{
+            "discovered":      hubs,
+            "bootstrap_connected": bootstrapConns,
+        },
+        "networks": networks,
+    }
+}
+

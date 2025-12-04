@@ -20,7 +20,7 @@ echo "Step 1: Deploying Bootstrap Hub ($PIGEONHUB_B)"
 echo "================================================"
 echo ""
 
-flyctl deploy --app "$PIGEONHUB_B" --env IS_HUB=true --env HOST=0.0.0.0 --env PORT=3000
+flyctl deploy --app "$PIGEONHUB_B" --env IS_HUB=true --env HOST=0.0.0.0 --env PORT=8080
 
 echo ""
 echo "✅ Hub B deployed!"
@@ -34,11 +34,11 @@ echo "Step 2: Deploying Secondary Hub ($PIGEONHUB_C)"
 echo "================================================"
 echo ""
 
-BOOTSTRAP_URL="ws://$PIGEONHUB_B.fly.dev:3000"
+BOOTSTRAP_URL="ws://$PIGEONHUB_B.fly.dev:8080"
 echo "Bootstrap URL: $BOOTSTRAP_URL"
 echo ""
 
-flyctl deploy --app "$PIGEONHUB_C" --env IS_HUB=true --env HOST=0.0.0.0 --env PORT=3000 --env BOOTSTRAP_HUBS="$BOOTSTRAP_URL"
+flyctl deploy --app "$PIGEONHUB_C" --env IS_HUB=true --env HOST=0.0.0.0 --env PORT=8080 --env BOOTSTRAP_HUBS="$BOOTSTRAP_URL"
 
 echo ""
 echo "✅ Hub C deployed!"
