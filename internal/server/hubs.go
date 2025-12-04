@@ -159,8 +159,29 @@ func (s *Server) handleBootstrapMessage(uri string, data []byte) {
             }
             s.cacheCrossHubPeer(netName, id, m)
             s.forwardToLocalPeers(netName, outboundMessage{Type: "peer-discovered", Data: m, FromPeerId: "system", NetworkName: netName, Timestamp: nowMs()})
-            // Forward back to other bootstrap hubs for bi-directional sync
+            
+            // Forward to all OTHER bootstrap hubs (mesh mesh)
             s.announceToBootstrapExcept(id, netName, false, m, uri)
+            
+            // ALSO echo back to the originating hub so it knows the peer was received
+            s.bootstrapMu.Lock()
+            for origUri, b := range s.bootstrapConns {
+                if origUri == uri && b.connected && b.ws != nil {
+                    payload := map[string]interface{}{
+                        "type": "peer-discovered",
+                        "data": mergeMap(m, map[string]interface{}{
+                            "peerId": id,
+                            "isHub": false,
+                        }),
+                        "networkName": netName,
+                        "fromPeerId": "system",
+                        "timestamp": nowMs(),
+                    }
+                    b.ws.WriteJSON(payload)
+                    break
+                }
+            }
+            s.bootstrapMu.Unlock()
         }
     case "offer", "answer", "ice-candidate":
         if msg.TargetPeer != "" {

@@ -14,9 +14,9 @@ RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /app
 COPY --from=builder /build/peerpigeon .
 
-EXPOSE 3000
+EXPOSE 8080
 
-ENV PORT=3000 \
+ENV PORT=8080 \
     HOST=0.0.0.0 \
     MAX_CONNECTIONS=1000 \
     CORS_ORIGIN=* \
