@@ -29,6 +29,43 @@ func (s *Server) connectToBootstrapHubs() {
     }
 }
 
+func (s *Server) scheduleBootstrapReconnect(uri string, attempt int) {
+    if !s.running {
+        return
+    }
+    if attempt >= s.opts.MaxReconnectAttempts {
+        s.bootstrapMu.Lock()
+        if b := s.bootstrapConns[uri]; b != nil {
+            if b.reconnectTimer != nil {
+                b.reconnectTimer.Stop()
+            }
+            delete(s.bootstrapConns, uri)
+        }
+        s.bootstrapMu.Unlock()
+        return
+    }
+
+    s.bootstrapMu.Lock()
+    b := s.bootstrapConns[uri]
+    if b == nil {
+        b = &bootstrapConn{uri: uri}
+        s.bootstrapConns[uri] = b
+    }
+    if b.reconnectTimer != nil {
+        b.reconnectTimer.Stop()
+        b.reconnectTimer = nil
+    }
+    b.connected = false
+    b.ws = nil
+    b.lastAttempt = nowMs()
+    b.attemptNum = attempt
+    interval := time.Duration(s.opts.ReconnectIntervalMs) * time.Millisecond
+    b.reconnectTimer = time.AfterFunc(interval, func() {
+        s.connectToHub(uri, attempt+1)
+    })
+    s.bootstrapMu.Unlock()
+}
+
 func (s *Server) connectToHub(uri string, attempt int) {
     u, err := url.Parse(uri)
     if err != nil {
@@ -39,13 +76,17 @@ func (s *Server) connectToHub(uri string, attempt int) {
     }
     ws, _, err := websocket.DefaultDialer.Dial(uri+"?peerId="+s.hubPeerId, nil)
     if err != nil {
-        if attempt == 0 {
-            return
-        }
+        s.scheduleBootstrapReconnect(uri, attempt)
         return
     }
+
     info := &bootstrapConn{uri: uri, ws: ws, connected: true, lastAttempt: nowMs(), attemptNum: attempt}
     s.bootstrapMu.Lock()
+    if existing := s.bootstrapConns[uri]; existing != nil {
+        if existing.reconnectTimer != nil {
+            existing.reconnectTimer.Stop()
+        }
+    }
     s.bootstrapConns[uri] = info
     s.bootstrapMu.Unlock()
     s.handleBootstrapOpen(info)
@@ -157,11 +198,18 @@ func (s *Server) handleBootstrapMessage(uri string, data []byte) {
                 s.emitHubDiscovered(id, uri)
                 return
             }
+            if id == "" {
+                return
+            }
+            // Deduplicate to avoid mesh loops.
+            if s.isCrossHubPeerCached(netName, id) {
+                return
+            }
             s.cacheCrossHubPeer(netName, id, m)
             s.forwardToLocalPeers(netName, outboundMessage{Type: "peer-discovered", Data: m, FromPeerId: "system", NetworkName: netName, Timestamp: nowMs()})
             
             // Forward to all OTHER bootstrap hubs (mesh mesh)
-            s.announceToBootstrapExcept(id, netName, false, m, uri)
+            s.announceToBootstrapExcept(id, netName, false, m, uri, "")
             
             // ALSO echo back to the originating hub so it knows the peer was received
             s.bootstrapMu.Lock()
@@ -210,6 +258,8 @@ func (s *Server) announceToBootstrap(peerId, netName string, isHub bool, data ma
         }
     }
     s.bootstrapMu.Unlock()
+
+    hubPeerConns := s.getHubPeerConns("")
     
     payload := map[string]interface{}{
         "type": "peer-discovered",
@@ -233,9 +283,14 @@ func (s *Server) announceToBootstrap(peerId, netName string, isHub bool, data ma
     for _, ws := range conns {
         ws.WriteJSON(payload)
     }
+    // Also send to hubs that are connected inbound (not represented in bootstrapConns).
+    out := outboundMessage{Type: "peer-discovered", Data: payload["data"], FromPeerId: "system", NetworkName: netName, Timestamp: nowMs()}
+    for _, conn := range hubPeerConns {
+        s.sendToConn(conn, out)
+    }
 }
 
-func (s *Server) announceToBootstrapExcept(peerId, netName string, isHub bool, data map[string]interface{}, excludeUri string) {
+func (s *Server) announceToBootstrapExcept(peerId, netName string, isHub bool, data map[string]interface{}, excludeUri string, excludeHubPeerId string) {
     s.bootstrapMu.Lock()
     conns := make([]*websocket.Conn, 0, len(s.bootstrapConns))
     for uri, b := range s.bootstrapConns {
@@ -244,6 +299,8 @@ func (s *Server) announceToBootstrapExcept(peerId, netName string, isHub bool, d
         }
     }
     s.bootstrapMu.Unlock()
+
+    hubPeerConns := s.getHubPeerConns(excludeHubPeerId)
     
     payload := map[string]interface{}{
         "type": "peer-discovered",
@@ -266,6 +323,11 @@ func (s *Server) announceToBootstrapExcept(peerId, netName string, isHub bool, d
     
     for _, ws := range conns {
         ws.WriteJSON(payload)
+    }
+    // Also send to hubs that are connected inbound (not represented in bootstrapConns).
+    out := outboundMessage{Type: "peer-discovered", Data: payload["data"], FromPeerId: "system", NetworkName: netName, Timestamp: nowMs()}
+    for _, conn := range hubPeerConns {
+        s.sendToConn(conn, out)
     }
 }
 

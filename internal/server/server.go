@@ -321,14 +321,28 @@ func (s *Server) forwardSignalToBootstrap(target string, resp outboundMessage) {
         }
     }
     s.bootstrapMu.Unlock()
+
+    // Also forward to hubs connected inbound to us (not represented as bootstrapConns).
+    for _, conn := range s.getHubPeerConns("") {
+        s.sendToConn(conn, resp)
+    }
 }
 
 func (s *Server) handlePeerDiscovered(fromHub string, msg inboundMessage) {
-    // This receives peer-discovered messages from other bootstrap hubs
-    // Forward them to local peers in the same network
+    // Receives peer-discovered messages from other hubs.
     if m, ok := msg.Data.(map[string]interface{}); ok {
         netName := firstNonEmpty(msg.NetworkName, "global")
-        
+        id, _ := m["peerId"].(string)
+        if id == "" {
+            return
+        }
+
+        // Deduplicate to avoid mesh loops.
+        if s.isCrossHubPeerCached(netName, id) {
+            return
+        }
+        s.cacheCrossHubPeer(netName, id, m)
+
         // Forward to local peers
         s.forwardToLocalPeers(netName, outboundMessage{
             Type: "peer-discovered",
@@ -337,7 +351,44 @@ func (s *Server) handlePeerDiscovered(fromHub string, msg inboundMessage) {
             NetworkName: netName,
             Timestamp: nowMs(),
         })
+
+        // If this came from a hub connection, propagate further across the mesh.
+        if pi := s.getPeerInfo(fromHub); pi != nil && pi.IsHub {
+            s.announceToBootstrapExcept(id, netName, false, m, "", fromHub)
+        }
     }
+}
+
+func (s *Server) isCrossHubPeerCached(netName, id string) bool {
+    s.bootstrapMu.Lock()
+    cache := s.crossHubCache[netName]
+    if cache == nil {
+        s.bootstrapMu.Unlock()
+        return false
+    }
+    _, ok := cache[id]
+    s.bootstrapMu.Unlock()
+    return ok
+}
+
+func (s *Server) getHubPeerConns(excludePeerId string) []*websocket.Conn {
+    s.hubsMu.Lock()
+    hubIds := make([]string, 0, len(s.hubs))
+    for id := range s.hubs {
+        if id == excludePeerId {
+            continue
+        }
+        hubIds = append(hubIds, id)
+    }
+    s.hubsMu.Unlock()
+
+    out := make([]*websocket.Conn, 0, len(hubIds))
+    for _, id := range hubIds {
+        if conn := s.getConn(id); conn != nil {
+            out = append(out, conn)
+        }
+    }
+    return out
 }
 
 func (s *Server) handlePing(peerId string) {
